@@ -60,7 +60,7 @@ def gather_all_planned_urls() -> list[str]:
     page = 1
     max_pages = 30  # Sikkerhet — hver side har ~50 annonser, så 30 sider = 1500
     while page <= max_pages:
-        url = f"{base}?sub_form_type=planned&page={page}"
+        url = f"{base}?lifecycle=3&page={page}"
         logger.info(f"Søkeside {page}: {url}")
         html = fetch(url)
         if not html:
