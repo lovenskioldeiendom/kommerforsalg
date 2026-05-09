@@ -1,0 +1,573 @@
+<!DOCTYPE html>
+<html lang="nb">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Kommer for salg — hele Norge</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+  :root {
+    --bg: #ffffff;
+    --bg-secondary: #f5f4ee;
+    --bg-tertiary: #faf9f4;
+    --text: #1a1a1a;
+    --text-muted: #6b6b6b;
+    --text-faint: #999;
+    --border: #e5e3dc;
+    --accent: #185fa5;
+    --success: #0f6e56;
+    --warning: #854f0b;
+    --danger: #a32d2d;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #1a1a1a;
+      --bg-secondary: #252525;
+      --bg-tertiary: #1e1e1e;
+      --text: #e8e8e8;
+      --text-muted: #a0a0a0;
+      --text-faint: #707070;
+      --border: #353535;
+      --accent: #85B7EB;
+      --success: #5DCAA5;
+      --warning: #EF9F27;
+      --danger: #F09595;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+    background: var(--bg); color: var(--text);
+    margin: 0; padding: 1.5rem; line-height: 1.5;
+  }
+  .container { max-width: 1300px; margin: 0 auto; }
+  h1 { font-size: 22px; font-weight: 500; margin: 0; }
+  h2 { font-size: 16px; font-weight: 500; margin: 0 0 12px; }
+  .header { display: flex; align-items: baseline; justify-content: space-between;
+            margin-bottom: 1.5rem; flex-wrap: wrap; gap: 8px; }
+  .updated { font-size: 13px; color: var(--text-muted); margin: 4px 0 0; }
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+           gap: 12px; margin-bottom: 1.5rem; }
+  .stat { background: var(--bg-secondary); border-radius: 8px; padding: 1rem; }
+  .stat-label { font-size: 13px; color: var(--text-muted); margin: 0; }
+  .stat-value { font-size: 24px; font-weight: 500; margin: 4px 0 0; }
+  .card { background: var(--bg); border: 1px solid var(--border); border-radius: 12px;
+          padding: 1rem 1.25rem; margin-bottom: 1.5rem; }
+  .controls { display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; }
+  .controls select, .controls input {
+    font-size: 13px; padding: 6px 10px; background: var(--bg-secondary);
+    color: var(--text); border: 1px solid var(--border); border-radius: 6px;
+  }
+  table { width: 100%; font-size: 13px; border-collapse: collapse; }
+  th { text-align: left; padding: 8px 6px; font-weight: 500; color: var(--text-muted);
+       border-bottom: 1px solid var(--border); font-size: 11px; text-transform: uppercase;
+       letter-spacing: 0.04em; }
+  th.num, td.num { text-align: right; font-variant-numeric: tabular-nums; }
+  td { padding: 10px 6px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  td.muni { font-size: 11px; color: var(--text-faint); text-transform: uppercase;
+            letter-spacing: 0.04em; }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  .empty { color: var(--text-muted); padding: 2rem; text-align: center; }
+  .footer { font-size: 12px; color: var(--text-faint); margin-top: 2rem; text-align: center; }
+  .map-toggle {
+    font-size: 13px; padding: 6px 12px; background: var(--bg-secondary);
+    color: var(--text); border: 1px solid var(--border);
+    border-radius: 6px; cursor: pointer;
+  }
+  .map-toggle:hover { background: var(--bg-tertiary); }
+  .download-btn {
+    font-size: 12px; padding: 6px 12px; background: var(--bg);
+    color: var(--text); border: 1px solid var(--border);
+    border-radius: 6px; cursor: pointer; margin-left: 8px;
+  }
+  #map-card { display: none; }
+  #map-card.open { display: block; }
+  #map { height: 500px; border-radius: 8px; border: 1px solid var(--border); }
+  #changes-card { display: none; }
+  #changes-card.open { display: block; }
+  .badge {
+    display: inline-block; padding: 1px 8px; font-size: 10px;
+    border-radius: 8px; margin: 2px;
+    background: var(--bg-secondary); color: var(--text-muted);
+  }
+  .badge-new { background: rgba(15, 110, 86, 0.15); color: var(--success); }
+  .badge-gone { background: rgba(133, 79, 11, 0.15); color: var(--warning); }
+  .badge-updated { background: rgba(24, 95, 165, 0.15); color: var(--accent); }
+  .change-section { margin-bottom: 18px; }
+  .change-section:last-child { margin-bottom: 0; }
+  .change-section-title {
+    font-size: 13px; font-weight: 500; color: var(--text-muted);
+    text-transform: uppercase; letter-spacing: 0.04em;
+    margin: 0 0 8px;
+  }
+  .stage-pill { display: inline-block; font-size: 11px; padding: 2px 8px;
+                border-radius: 10px; background: var(--bg-secondary);
+                color: var(--text-muted); margin-left: 6px; }
+  .map-popup { font-size: 13px; min-width: 200px; }
+  .map-popup .title { font-weight: 500; margin-bottom: 4px; }
+  .map-popup .stat-row { color: #555; margin: 2px 0; font-size: 12px; }
+  .timeline-cell { font-size: 11px; line-height: 1.4; color: var(--text-muted); }
+  .timeline-cell strong { color: var(--text); font-weight: 500; }
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="header">
+    <div>
+      <h1>Kommer for salg — hele Norge</h1>
+      <p class="updated">Alle fylker og kommuner · Sist oppdatert: <span id="updated-date">—</span></p>
+    </div>
+  </div>
+
+  <div class="stats" id="stats"></div>
+
+  <div class="card" id="map-card">
+    <h2>Kart</h2>
+    <div id="map"></div>
+  </div>
+
+  <div class="card" id="changes-card">
+    <h2 style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
+      <span>Endringer</span>
+      <span style="display: flex; gap: 8px;">
+        <button class="map-toggle period-btn" data-period="week">Siste uke</button>
+        <button class="map-toggle period-btn" data-period="month">Siste måned</button>
+        <button class="download-btn" id="changes-export-btn">Last ned (Excel)</button>
+      </span>
+    </h2>
+    <div id="changes-content"></div>
+  </div>
+
+  <div class="card">
+    <div class="controls">
+      <select id="fylke-filter">
+        <option value="">Alle fylker</option>
+      </select>
+      <select id="muni-filter">
+        <option value="">Alle kommuner</option>
+      </select>
+      <input id="search" type="search" placeholder="Søk prosjekt..." style="flex: 1; min-width: 180px;">
+      <button id="map-toggle" class="map-toggle">Vis kart</button>
+      <button id="changes-toggle" class="map-toggle">Vis endringer</button>
+      <button class="download-btn" id="all-export-btn">Last ned alle (Excel)</button>
+    </div>
+    <div style="overflow-x: auto;">
+      <table>
+        <thead>
+          <tr>
+            <th>Prosjekt</th>
+            <th>Type</th>
+            <th class="num">Soverom</th>
+            <th class="num">Antall</th>
+            <th>Pris</th>
+            <th>Tidslinje</th>
+          </tr>
+        </thead>
+        <tbody id="project-table"></tbody>
+      </table>
+    </div>
+    <div id="empty-msg" class="empty" style="display:none;">Ingen prosjekter matcher filteret.</div>
+  </div>
+
+  <p class="footer">
+    Genereret automatisk fra Finn.no kommer-for-salg-annonser. Endringer detekteres ved å sammenligne snapshots.
+  </p>
+</div>
+
+<script>
+const DATA = {"updated": "2026-05-09", "projects": [{"id": 2, "date": "2026-05-09", "municipality": "Bærum", "fylke": "Akershus", "finn_code": "438980616", "title": "Fornebu Sentrum", "subtitle": "Nye boliger rett ved t-bane og sjøen. 6 stopp til Majorstuen", "address": "Rolfsbuktveien, 1364 Fornebu", "description": "Fornebu Sentrum vokser ut fra idéen om et helt nytt byliv, hvor alt du liker finnes akkurat der du bor. Nyt utsikten fra takterrassen, ta et forfriskende fjordbad og smak deg frem til nye favoritter fra nabolagets menyer. I hjertet av området kommer T-banens endestopp, omkranset av et levende sentrum med gågater, torg, sitteplasser og gårdsrom. Her møter byliv og natur hverandre i en harmonisk balanse som inviterer til bevegelse, samvær og overskudd. Vi kaller det fremtidens levende bymiljø. Fornebu Sentrum vil etter ferdigstillelse bestå av totalt 1700 boliger. Første prosjekt ut for salg er \"Sjøly\". Her planlegges det for 190 leiligheter. Omtrent 190 leiligheter - et mangfold av hjem Her kommer rundt 190 leiligheter i mange ulike størrelser og løsninger. Variasjonen gjør at kvartalet får noe for alle livsfaser: Kompakte 2-roms fra ca. 37 kvm Store toppleiligheter med private takterrasser og sjøutsikt Gjennomgående endeleiligheter med lys og luft Urbane duplex townhouse-leiligheter med egen inngang ut mot gaten Leiligheter på bakkeplan med romslige markterrasser Enten du er førstegangskjøper, småbarnsfamilie eller ønsker en mer tilbakelent livsstil, vil du finne et hjem som passer dine behov. Midt i sentrum, med alt rett utenfor Kvartalet ligger ved Rolfsbuktveien, på tomten der dagens bygg ved siden av padelhallen står. Rundt kvartalet vil tre ulike torg bli skapt - Byhagen, Atriumtorget og Bytorget, hver med sin egen identitet. Her legges det til rette for lek og aktivitet for de minste, kreative møteplasser for unge og voksne, og et hverdagsnært torg med service og nærhandel rett ved T-baneutgangen. Seks stopp fra byen - bilfritt og enkelt Med ny T-banestasjon i Bytorget blir du bare seks stopp unna Oslo sentrum. Hele området planlegges bilfritt, slik at mennesker og møteplasser får forrang. Fornebu blir dermed et sted hvor det urbane livet møter en grønn og trygg ramme for hverdagen.", "home_type": "Leilighet", "ownership": "Selveier", "bedrooms_range": "1 - 3", "price_info": "Pris kommer", "sale_start": "Planlagt juni 2026", "construction_start": "Planlegges 4 kvartal 2026", "handover": "Planlegges 4 kvartal 2028", "stage": "Forbereder salgsstart", "project_url": "https://www.finn.no/realestate/planned/ad.html?finnkode=438980616", "external_url": "https://www.selvaagbolig.no/akershus/fornebu-sentrum/", "unit_count_hint": null, "last_modified": "21. apr. 2026 13:10", "scraped_at": "2026-05-09T18:16:50", "lat": 59.8913374, "lng": 10.6262346}, {"id": 5, "date": "2026-05-09", "municipality": "Nes", "fylke": "Akershus", "finn_code": "454592254", "title": "Garverenga", "subtitle": "Garverenga – Moderne tomannsboliger med balkong og carport i rolige og naturnære omgivelser på Haga", "address": "Garverenga 8, 1929 Auli", "description": "Velkommen til Garverenga , moderne tomannsboliger i et rolig og attraktivt boligområde på Haga i Nes. Her får du en stilren og lettstelt bolig med gode uteplasser, balkong og praktisk planløsning. PRIS FRA: 3.990.000,-. Boligene ligger fint til i grønne omgivelser med gode solforhold og kort vei til skole, barnehage, butikk og kollektivtransport. Samtidig har du enkel pendleravstand til både Årnes, Lillestrøm og Oslo. Dette er en bolig som passer perfekt for førstegangskjøpere, par eller små familier som ønsker en moderne bolig i et hyggelig nabolag. Kort fortalt Moderne tomannsboliger over to plan Balkong med gode solforhold Stue og kjøkken i åpen løsning Praktisk planløsning med gode oppholdsrom Carport og parkering på eiendommen Fine uteområder Rolig og familievennlig boligområde Kort vei til skole, barnehage og dagligvare Flotte turmuligheter i nærområdet Enkel pendleravstand til Årnes, Lillestrøm og Oslo Veldig kort gangavstand til tog og buss Boligen ligger fint til på tomten med gode utearealer og romslig gårdsplass. Glomma ligger i umiddelbar nærhet med tur, fisk og båtmuligheter. Beliggenhet Garverenga ligger på Haga i Nes kommune , i et etablert og rolig boligområde. Området består hovedsakelig av småhusbebyggelse og er kjent for sitt trygge og familievennlige miljø. Her bor du med nærhet til: Dagligvarebutikk Skole og barnehage Idrettsanlegg og fritidstilbud Turstier og naturområder For pendlere er det enkel tilgang til Årnes, Lillestrøm og Oslo. Boligen Boligene er utviklet med fokus på moderne bokvalitet og gode planløsninger. Store vindusflater gir lyse og trivelige oppholdsrom. Oppholdsrommet med stue og kjøkken ligger i samme etasje og gir god plass til både spisegruppe og sofagruppe. Herfra er det også utgang til balkong hvor man kan nyte solrike dager og utsikt over nærområdet. Planløsning Boligene går over to etasjer med en funksjonell planløsning. 1. etasje Entré / gang Bad To soverom Garderobe 2. etasje Stue og kjøkken i åpen løsning Utgang til ", "home_type": "Tomannsbolig", "ownership": "Selveier", "bedrooms_range": "2 - 3", "price_info": "Pris kommer", "sale_start": "Nå", "construction_start": "1. August", "handover": "Etter avtale", "stage": "Salgsstart", "project_url": "https://www.finn.no/realestate/planned/ad.html?finnkode=454592254", "external_url": null, "unit_count_hint": null, "last_modified": "19. mars 2026 11:41", "scraped_at": "2026-05-09T18:17:05", "lat": null, "lng": null}, {"id": 9, "date": "2026-05-09", "municipality": "Oslo", "fylke": "Oslo", "finn_code": "462786479", "title": "Trosterudveien 26 A-E", "subtitle": "5 nye familieboliger på Gråkammen kommer for salg! Takterrasse - Garasje - Påkostet standard - Meld din interesse!", "address": "Trosterudveien 26, 0779 Oslo", "description": "Om prosjektet Velkommen til Trosterudveien 26. 5 familieboliger kommer for salg! Dette er et boligprosjekt som kombinerer moderne arkitektur med et rolig og familievennlig bomiljø. Det familietilpassede prosjektet ligger i det ettertraktede boområdet Gråkammen, kjent for sitt fredelige og naturskjønne miljø, samtidig som det har nærhet til byens fasiliteter. Her er det oppført fem nye boliger med høy standard og gjennomtenkte detaljer som legger til rette for en komfortabel hverdag. Prosjektet er i sluttfasen og husene er forventet ferdigstilt i løpet av Q3 2026. Prosjektet består av to flotte tomannsboliger og én enebolig, totalt 5 enheter, alle designet for å passe moderne familiebehov. Hver bolig strekker seg over tre etasjer og tilbyr godt med plass og lys, med løsninger som gjør både funksjonalitet og estetikk til en naturlig del av hverdagen. Som en ekstra bonus har alle boligene private takterrasser perfekte for å samle familie og venner for hyggelige stunder. Kjøkkenet er hjertet i hjemmet, og her har utbygger valgt det anerkjente kvalitetsmerket Drømmekjøkkenet, samt hvitevarer fra Miele, som leverer elegante og stilrene løsninger med fokus på funksjonalitet. Videre har boligene to baderom, utformet med materialer og utstyr av høy standard, som sørger for et komfortabelt og moderne preg. Hver bolig har tre soverom i 2. etasje. Alle boligene har én egen garasjeplass samt bod i felles garasjekjeller, noe som gir praktisk og trygg parkering. Disse boligene på Trosterudveien 26 passer for deg som ønsker det lille ekstra i hverdagen et hjem hvor hver kvadratmeter er tatt i bruk, og hvor miljøet rundt understøtter en trygg og trivelig livsstil. Velkommen til ditt nye hjem på vakre Gråkammen! Interessert i dette prosjektet? Meld din interesse for dette prosjektet i dag. Megler vil kontakte deg når boligene er salgsklare. Beliggenhet I det fredelige og veletablerte området Gråkammen, får du en sjelden kombinasjon av bynærhet og kort vei til frodig natur. Dette er e", "home_type": "Tomannsbolig, Enebolig", "ownership": "Selveier", "bedrooms_range": "3 - 4", "price_info": "Pris kommer", "sale_start": "Juni 2026", "construction_start": "Husene er under ferdigstilling", "handover": "Estimert: Q3 2026 (v/brukstillatelse)", "stage": "Klargjøres for salg", "project_url": "https://www.finn.no/realestate/planned/ad.html?finnkode=462786479", "external_url": null, "unit_count_hint": 5, "last_modified": "09. mai 2026 09:51", "scraped_at": "2026-05-09T18:17:24", "lat": 59.957966, "lng": 10.707908}, {"id": 4, "date": "2026-05-09", "municipality": "Stavanger", "fylke": "Rogaland", "finn_code": "445120619", "title": "Peders Hage", "subtitle": "Peders Hage - nye selveierleiligheter i Saxemarka - kommer for salg våren 2026", "address": "Peder Saxes gate 18, 4019 Stavanger", "description": "Om prosjektet I Saxemarka, i Peder Saxes gate 18, kommer et nytt boligprosjekt med moderne selveierleiligheter i et etablert og sentrumsnært nabolag. Prosjektet består av to bygg med totalt 33 leiligheter i varierte størrelser fra ca. 42 til 126 kvm - tilpasset ulike livsfaser og behov. Her bor du med kort vei til det meste: Mosvannet og Sørmarka for tur og trening, Stavanger sentrum for byliv og kultur, samt det nye Stavanger Universitetssjukehus og universitetet. Sykkelstamveien går like utenfor døren og gir enkel og rask adkomst til store deler av byen. Prosjektet får felleshus og en grønn felles hage som legger til rette for et sosialt og trygt nabolag. I tillegg etableres et næringslokale i første etasje, som bidrar til liv og aktivitet i området. Tomten har en lang lokal historie, kjent for mange som stedet der Samvirkelaget «Økko» og senere Coop Prix holdt til - nå skrevet videre som et nytt kapittel i Saxemarka. Salgsstart nå i vår! Registrer din interesse i dag for å motta informasjon først og få mulighet til å velge leilighet tidlig i salgsprosessen. Kort om prosjektet - 33 selveierleiligheter - Størrelser fra ca. 42-126 kvm - Felleshus og grønn felles hage - Næringslokale i prosjektet - Sentralt i Saxemarka / Peder Saxes gate - Kort vei til Mosvannet, Sørmarka, sentrum, sykehuset og universitetet Et nærområde med behagelige avstander I Saxemarka bor du sentralt, med korte og enkle avstander til det meste i hverdagen. Det nye Stavanger Universitetssjukehus ligger kun 7-8 minutter unna med sykkel, og sykkelstamveien går rett utenfor døren - perfekt for en effektiv og komfortabel reise til jobb, studier og sentrum. Stavanger sentrum nås raskt både til fots, på sykkel eller med buss, og kollektivtilbudet i området gir gode forbindelser i alle retninger. Like i nærheten finner du Gamlingen, som byr på utendørs bading hele året, samt Mosvannet og Sørmarka med flotte tur- og treningsmuligheter. Med daglige servicetilbud, bussforbindelser og byens viktigste knute", "home_type": "Leilighet", "ownership": "Selveier", "bedrooms_range": "1 - 4", "price_info": "Pris kommer", "sale_start": "Våren 2026", "construction_start": "Kommer", "handover": "Kommer", "stage": "2024/2025", "project_url": "https://www.finn.no/realestate/planned/ad.html?finnkode=445120619", "external_url": null, "unit_count_hint": 33, "last_modified": "09. jan. 2026 09:05", "scraped_at": "2026-05-09T18:16:59", "lat": 58.9468907, "lng": 5.7190056}, {"id": 10, "date": "2026-05-09", "municipality": "Levanger", "fylke": "Trøndelag", "finn_code": "462827895", "title": "Eidsbotn, Nesheim", "subtitle": "Helt ny tomannsbolig. Fantastisk utsikt & gode solforhold. Carport & sportsbod.", "address": "Nesheimvegen 15, 7603 Levanger", "description": "Her skal det bygges en lekker og moderne tomannsbolig med 2 enheter for salg. Boligene vil ha en gjennomgående god standard og en attraktiv beliggenhet i Eidsbotn. Fra boligen har man flott utsikt mot Eidsbotn og Momarka mm, samt svært gode solforhold. Begge boligene inneholder 3 soverom, 2 bad, stue og kjøkken. I tillegg har man en solrik og romslig veranda. Utvendig bod i bakkant av carport. Ta kontakt for å avtale et møte.", "home_type": "Tomannsbolig", "ownership": "Selveier", "bedrooms_range": "3", "price_info": "Pris kommer", "sale_start": "August 2026", "construction_start": "Ved salg", "handover": "12-16 mnd etter byggestart", "stage": "Ferdig planlagt", "project_url": "https://www.finn.no/realestate/planned/ad.html?finnkode=462827895", "external_url": null, "unit_count_hint": 2, "last_modified": "08. mai 2026 07:50", "scraped_at": "2026-05-09T18:17:29", "lat": 63.7383403, "lng": 11.2596473}, {"id": 1, "date": "2026-05-09", "municipality": "Levanger", "fylke": "Trøndelag", "finn_code": "397809571", "title": "Åsgårdsvegen 1 (Nesseguttbanen)", "subtitle": "4 nye boliger på Nesset| Sentralt | 4 soverom | Mulighet for hybelutleie | Utsikt | Gode solforhold | Carport | 132 kvm.", "address": "Åsgårdsvegen 1 (Nesseguttbanen), 7607 Levanger", "description": "Kort om eiendommen Få en enklere hverdag med mer fritid og mindre stress Åsgårdsvegen 1 ved Nesseguttbanen. Her kan du senke skuldrene uten bekymringer for verken vedlikehold eller transport av barn til fotballtrening og skole. Boligene ligger svært praktisk til med Nesheim skole, barnehage, dagligvarebutikk og Nesseguttbanen rett i nærheten. Gangavstand til Levanger sentrum. Boligene er vendt rett mot sør, som gir optimale solforhold i kombinasjon med nydelig utsikt utover bygda. Her kommer 4 svært praktiske boliger på ca. 132 kvm. med en planløsning som passer utmerket både for småbarnsforeldre med behov for mange soverom, og for godt voksne par som drømmer om et enklere liv uten å flytte i leilighet. Hovedetasjen har alt man skulle trenge, med stue, kjøkken, soverom og bad med vaskemaskinuttak, så her er det muligheter til bo behagelig selv om årene går og kroppen trenger en enklere hverdag. Skulle man ha et ønske om friere økonomi med leieinntekt kan man også velge å gå for boligtypen med hybelutleie. Ta kontakt for mer informasjon og for å stille tidlig i køen ved valg av din nye bolig.", "home_type": "Tomannsbolig", "ownership": "Selveier", "bedrooms_range": null, "price_info": "Pris kommer", "sale_start": "Våren 2025.", "construction_start": "2025.", "handover": "2026.", "stage": "Under arbeid.", "project_url": "https://www.finn.no/realestate/planned/ad.html?finnkode=397809571", "external_url": null, "unit_count_hint": null, "last_modified": "14. mars 2025 14:37", "scraped_at": "2026-05-09T18:16:46", "lat": null, "lng": null}, {"id": 6, "date": "2026-05-09", "municipality": "Steinkjer", "fylke": "Trøndelag", "finn_code": "456991708", "title": "Heggesengvegen 27", "subtitle": "Steinkjer. Enebolig med mulighet for hybelleilighet planlegges oppført på Heggesenget", "address": "Heggesengvegen 27, 7715 Steinkjer", "description": "Enebolig med mulighet for hybelleilighet planlegges oppført på Heggesenget. Høy standard, carport, 3 soverom, 2 bad samt egen hybelleilighet. Pergola over deler av balkong.", "home_type": "Enebolig", "ownership": "Selveier", "bedrooms_range": "3", "price_info": "Pris kommer", "sale_start": "Våren 2026", "construction_start": "I løpet av 2026", "handover": "2026/2027", "stage": "2026", "project_url": "https://www.finn.no/realestate/planned/ad.html?finnkode=456991708", "external_url": "https://fuglesangdahl.no/", "unit_count_hint": null, "last_modified": "10. apr. 2026 10:44", "scraped_at": "2026-05-09T18:17:09", "lat": 64.028452, "lng": 11.503514}, {"id": 8, "date": "2026-05-09", "municipality": "Trondheim", "fylke": "Trøndelag", "finn_code": "457883063", "title": "Lillebytunet Rekkehus", "subtitle": "Gjør deg klar for salgsstart - 7 moderne rekkehus på Lillebytunet med gode kvaliteter og flott beliggenhet!", "address": "Stjørdalsveien 25, 7041 Trondheim", "description": "Kort om eiendommen Velkommen til Lillebytunet - nå lanseres 7 rekkehus! I dette byggetrinnet får du en sjelden mulighet til å sikre deg et av de 7 moderne rekkehusene i et attraktivt område mellom Trondheim sentrum og Lade. Her bor du i rolige, grønne omgivelser - samtidig som byen er rett i nærheten. Rekkehusene som nå legges ut for salg byr på romslige løsninger, familievennlig planløsning og en moderne standard. Her får du boliger som er tilpasset en aktiv hverdag, med god plass både inne og ute - ideelt for deg som ønsker en praktisk og komfortabel bolig. Lillebytunet består totalt av 117 leiligheter og 7 rekkehus, samlet rundt et grønt og solrikt gårdsrom. Prosjektet er utformet med en åpen og inviterende struktur, med hyggelige gangveier og passasjer som skaper liv og variasjon i uterommene. Som beboer får du også tilgang til et flott felles selskapslokale, perfekt for både hverdag og fest. De grønne uteområdene mellom byggene blir et naturlig samlingspunkt for både store og små. Ta kontakt i dag for mer informasjon - og sikre deg muligheten til å bli blant de første som får velge rekkehus på Lillebytunet! . Standard Noen av kvalitetene ved byggene vi ønsker å fremheve er: - Splitter nye rekkehus med gjennomgående gode materialvalg - Romslige og familievennlige planløsninger over to plan - Kjøkkeninnredning fra anerkjente HTH, med integrerte hvitevarer - Privat uteplass/hage og gode solforhold - Egen inngang som gir en mer privat og hjemlig boligfølelse - Flislagte bad med downlights i tak og dimmer - Gode oppbevaringsløsninger - Barnevennlige og grønne fellesområder rett utenfor døren - Moderne og energieffektive løsninger som gir komfort i hverdagen . Beliggenhet Med en beliggenhet som denne får du i pose og sekk. Et skjermet og solrikt nabolag, like ved sentrum. Her har du gangavstand til alt fra dagligvare, shopping og turområder, til skole, barnehage, bussholdeplasser og andre viktige servicefunksjoner. På under ti minutter er du på City Lade, med kanelbo", "home_type": "Rekkehus", "ownership": "Selveier", "bedrooms_range": null, "price_info": "Pris kommer", "sale_start": "Mai 2026", "construction_start": "3.kvartal 2026", "handover": "2028", "stage": "1.kvatral 2026", "project_url": "https://www.finn.no/realestate/planned/ad.html?finnkode=457883063", "external_url": "https://bolig.skanska.no/prosjekter/lillebytunet/salgstrinn-3", "unit_count_hint": 7, "last_modified": "08. mai 2026 08:03", "scraped_at": "2026-05-09T18:17:18", "lat": 63.44134, "lng": 10.439708}, {"id": 7, "date": "2026-05-09", "municipality": "Bergen", "fylke": "Vestland", "finn_code": "457356318", "title": "Eikåsen 10, Paradis | Kommer for salg", "subtitle": "To eksklusive arkitekttegnede eneboliger i attraktivt villastrøk", "address": "Eikåsen 10, 5231 Paradis", "description": "I et av Paradis’ mest etterspurte og etablerte villaområder kommer to eksklusive eneboliger for salg. Boligene er arkitekttegnet og utformet med fokus på tidløs eleganse, lys, luft og gjennomgående høy kvalitet. Store vindusflater og åpne planløsninger gir en naturlig flyt mellom inne- og uterom, med solrike, sørvestvendte hager og skjermede uteplasser. Begge boligene får privat garasje, hvor den ene har integrert dobbelgarasje med direkte adkomst til boligen. Kjøper får en unik mulighet til å sette sitt eget preg på hjemmet, med gode muligheter for tilpasninger i planløsninger, materialvalg og uttrykk i samarbeid med utbygger. Boligene er godkjent med oppvarmet svømmebasseng, som kan leveres som tilvalg. Attraktiv og rolig beliggenhet i blindvei, med kort vei til bybane, skoler, barnehager og servicetilbud. Dette er en sjelden mulighet til å sikre seg en eksklusiv bolig i et svært attraktivt område. Interessenter kan allerede nå kontakte megler for avtale om presentasjon av prosjektet.", "home_type": "Enebolig", "ownership": "Selveier", "bedrooms_range": "4", "price_info": "Pris kommer", "sale_start": "Våren 2026", "construction_start": "Etter nærmere avtale", "handover": "Etter nærmere avtale", "stage": "Planlegges for salg", "project_url": "https://www.finn.no/realestate/planned/ad.html?finnkode=457356318", "external_url": "https://www.opphus.no/familieboliger/eikasen/", "unit_count_hint": null, "last_modified": "09. apr. 2026 12:44", "scraped_at": "2026-05-09T18:17:14", "lat": 60.3383722, "lng": 5.3497169}, {"id": 3, "date": "2026-05-09", "municipality": "Skiptvet", "fylke": "Østfold", "finn_code": "441320649", "title": "Nye Skiptvet", "subtitle": "Midt i hjertet av Østfold: Landlig, lunt og lett å leve i. På tegneblokka, men snart virkelighet!", "address": "Lundsveien, 1816 Skiptvet", "description": "Om prosjektet På tegneblokka, men snart virkelighet! Det skjer noe i Skiptvet. Vi forbereder nå et nytt boligområde som gir deg mer plass, frisk luft og et nabolag det er lett å trives i. Prosjektet heter Nye Skiptvet, og målet er enkelt; gjøre hverdagen landlig og rolig, samtidig som du har kort vei til alt som betyr noe. Fire mil til alt, men tett på alt som betyr noe. Beliggenheten er midt i Østfold, med praktisk avstand til by, jobb, skole og fritid. Pendlingen er overkommelig, hverdagslogistikken flyter, handlelista er alltid innen rekkevidde, og fritidsaktivitetene er aldri langt unna. Du bor landlig, men oppleves fortsatt tett på det urbane effektive. Innen 4 mil i luftlinje finner du Ski, Tusenfryd, Moss, Fredrikstad, Halden og Drøbak - i tillegg til svenskegrensen ved Ørje og Halden. Askim sentrum er ca 12 minutter unna med E18, togstasjon, kjøpesenter, Østfoldbadet, bowling, trampolinepark, kino og kulturhus m.m. Sykehuset på Kalnes, Sarpsborg og E6 når man på under 30 minutter. Vi tegner nå drømmen for deg som vil bytte balkongkasse med hage. Dette er for deg som vil bytte balkongkasse med hage og kjenne gress under føttene. Landlig, men bare en liten biltur unna byen. Vi planlegger lyse og funksjonelle planløsninger, gode uteplasser, smarte kvadratmeter og kvaliteter i nærmiljøet som gjør at du trives fra dag én. Her får du ro når du vil ha den og effektivitet når du trenger den. Et nabolag med lun stemning. Nye Skiptvet handler om trygghet, oversikt og små gleder i hverdagen. Gode uterom, hyggelige ganglinjer og smarte løsninger gjør at det er enkelt å leve livet slik du ønsker. Landlig, lunt og lett å leve i. Og ja - bygdetunet i sentrum ligger bare ca. 900 meter unna langs gangvei. Status nå - vær med å påvirke. Prosjektet er under utarbeidelse og nærmer seg salgsstart. Vi finpusser boligtypene, planløsningene og uteområdene - og deler alt ved lansering. Har du ønsker eller innspill? Det er nå du kan påvirke, ta kontakt med megler i dag. Følg med. Leg", "home_type": "Enebolig, Tomannsbolig, Leilighet, Rekkehus", "ownership": "Selveier", "bedrooms_range": "1 - 6", "price_info": "Pris kommer", "sale_start": "2026", "construction_start": "2027", "handover": "2027/2028", "stage": "2025/2026", "project_url": "https://www.finn.no/realestate/planned/ad.html?finnkode=441320649", "external_url": null, "unit_count_hint": null, "last_modified": "15. des. 2025 10:30", "scraped_at": "2026-05-09T18:16:55", "lat": 59.4824835, "lng": 11.1218131}], "changes_week": {"new": [], "gone": [], "updated": []}, "changes_month": {"new": [], "gone": [], "updated": []}};
+
+function fmt(n) {
+  if (n === null || n === undefined) return '–';
+  return new Intl.NumberFormat('nb-NO').format(Math.round(n));
+}
+
+function escapeHtml(text) {
+  if (text === null || text === undefined) return '';
+  return String(text)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#039;');
+}
+
+function projectsFiltered() {
+  const fylkeFilter = document.getElementById('fylke-filter').value;
+  const muniFilter = document.getElementById('muni-filter').value;
+  const search = document.getElementById('search').value.toLowerCase();
+  return DATA.projects.filter(p => {
+    if (fylkeFilter && p.fylke !== fylkeFilter) return false;
+    if (muniFilter && p.municipality !== muniFilter) return false;
+    if (search && !(p.title || '').toLowerCase().includes(search)) return false;
+    return true;
+  });
+}
+
+function renderStats() {
+  const projects = projectsFiltered();
+  const totalProjects = projects.length;
+  const totalUnits = projects.reduce((s, p) => s + (p.unit_count_hint || 0), 0);
+
+  const fylkeFilter = document.getElementById('fylke-filter').value;
+  const muniFilter = document.getElementById('muni-filter').value;
+  const matchScope = (p) => {
+    if (fylkeFilter && p.fylke !== fylkeFilter) return false;
+    if (muniFilter && p.municipality !== muniFilter) return false;
+    return true;
+  };
+
+  const newCount = (DATA.changes_week.new || []).filter(matchScope).length;
+  const updatedCount = (DATA.changes_week.updated || []).filter(matchScope).length;
+
+  const scopeLabel = muniFilter || fylkeFilter || 'totalt';
+
+  document.getElementById('stats').innerHTML = `
+    <div class="stat"><p class="stat-label">Prosjekter (${escapeHtml(scopeLabel)})</p><p class="stat-value">${totalProjects}</p></div>
+    <div class="stat"><p class="stat-label">Planlagte enheter</p><p class="stat-value">${fmt(totalUnits)}</p></div>
+    <div class="stat"><p class="stat-label">Nye siste uke</p><p class="stat-value" style="color: var(--success);">${fmt(newCount)}</p></div>
+    <div class="stat"><p class="stat-label">Endret siste uke</p><p class="stat-value" style="color: var(--accent);">${fmt(updatedCount)}</p></div>
+  `;
+}
+
+function renderTable() {
+  const projects = projectsFiltered();
+  const body = document.getElementById('project-table');
+  body.innerHTML = '';
+
+  for (const p of projects) {
+    const timeline = [
+      p.sale_start ? `<div><strong>Salg:</strong> ${escapeHtml(p.sale_start)}</div>` : '',
+      p.construction_start ? `<div><strong>Bygg:</strong> ${escapeHtml(p.construction_start)}</div>` : '',
+      p.handover ? `<div><strong>Overtak:</strong> ${escapeHtml(p.handover)}</div>` : '',
+    ].filter(Boolean).join('');
+
+    body.insertAdjacentHTML('beforeend', `
+      <tr data-finn="${p.finn_code}">
+        <td>
+          <div class="muni">${escapeHtml(p.fylke || '–')} · ${escapeHtml(p.municipality || 'Ukjent kommune')}</div>
+          <div><a href="${escapeHtml(p.project_url)}" target="_blank" rel="noopener">${escapeHtml(p.title || '—')}</a></div>
+          <div style="font-size:12px;color:var(--text-faint);margin-top:2px;">${escapeHtml(p.address || '')}</div>
+        </td>
+        <td>${escapeHtml(p.home_type || '–')}</td>
+        <td class="num">${escapeHtml(p.bedrooms_range || '–')}</td>
+        <td class="num">${p.unit_count_hint ? fmt(p.unit_count_hint) : '–'}</td>
+        <td>${escapeHtml(p.price_info || '–')}</td>
+        <td class="timeline-cell">${timeline || '–'}</td>
+      </tr>
+    `);
+  }
+
+  document.getElementById('empty-msg').style.display = projects.length === 0 ? 'block' : 'none';
+}
+
+// === KART ===
+let mapInstance = null, markerLayer = null, mapInitialized = false;
+
+function toggleMap() {
+  const card = document.getElementById('map-card');
+  const btn = document.getElementById('map-toggle');
+  if (card.classList.contains('open')) {
+    card.classList.remove('open');
+    btn.textContent = 'Vis kart';
+    return;
+  }
+  card.classList.add('open');
+  btn.textContent = 'Skjul kart';
+  if (!mapInitialized) {
+    initMap();
+    mapInitialized = true;
+  } else {
+    setTimeout(() => mapInstance.invalidateSize(), 100);
+  }
+  renderMapMarkers();
+}
+
+function initMap() {
+  // Sentrer på sentrale Norge med zoom som viser hele landet
+  mapInstance = L.map('map').setView([64.5, 11.5], 4);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 19, attribution: '© OpenStreetMap',
+  }).addTo(mapInstance);
+  markerLayer = L.layerGroup().addTo(mapInstance);
+}
+
+function colorForFylke(fylke) {
+  // Distinkte farger for de 15 aktuelle fylkene
+  const colors = {
+    'Oslo': '#1e88e5',
+    'Akershus': '#43a047',
+    'Østfold': '#fb8c00',
+    'Buskerud': '#8e24aa',
+    'Innlandet': '#0097a7',
+    'Vestfold': '#e53935',
+    'Telemark': '#5e35b1',
+    'Agder': '#d81b60',
+    'Rogaland': '#f4511e',
+    'Vestland': '#039be5',
+    'Møre og Romsdal': '#7cb342',
+    'Trøndelag': '#fdd835',
+    'Nordland': '#6d4c41',
+    'Troms': '#00897b',
+    'Finnmark': '#3949ab',
+    // Eldre koder
+    'Viken': '#43a047',
+    'Vestfold og Telemark': '#e53935',
+    'Troms og Finnmark': '#00897b',
+  };
+  return colors[fylke] || '#666';
+}
+
+function renderMapMarkers() {
+  if (!mapInstance) return;
+  markerLayer.clearLayers();
+  const projects = projectsFiltered();
+  const withCoords = projects.filter(p => p.lat && p.lng);
+
+  const bounds = [];
+  for (const p of withCoords) {
+    const r = p.unit_count_hint ? Math.max(8, Math.min(28, Math.sqrt(p.unit_count_hint) * 3)) : 8;
+    const marker = L.circleMarker([p.lat, p.lng], {
+      radius: r, fillColor: colorForFylke(p.fylke),
+      color: '#fff', weight: 1.5, opacity: 1, fillOpacity: 0.75,
+    });
+    marker.bindPopup(`
+      <div class="map-popup">
+        <div class="title">${escapeHtml(p.title || '')}</div>
+        <div class="stat-row"><strong>${escapeHtml(p.fylke || '')}</strong> · ${escapeHtml(p.municipality || '')}</div>
+        <div class="stat-row">${escapeHtml(p.home_type || '')}</div>
+        ${p.unit_count_hint ? `<div class="stat-row">${p.unit_count_hint} planlagte enheter</div>` : ''}
+        ${p.sale_start ? `<div class="stat-row">Salgsstart: ${escapeHtml(p.sale_start)}</div>` : ''}
+        ${p.handover ? `<div class="stat-row">Overtakelse: ${escapeHtml(p.handover)}</div>` : ''}
+        <a href="${escapeHtml(p.project_url)}" target="_blank">Åpne i Finn</a>
+      </div>
+    `);
+    marker.addTo(markerLayer);
+    bounds.push([p.lat, p.lng]);
+  }
+
+  if (bounds.length > 0) {
+    mapInstance.fitBounds(bounds, {padding: [40, 40], maxZoom: 12});
+  }
+}
+
+// === ENDRINGER ===
+let changesOpen = false;
+let currentPeriod = 'week';
+
+function toggleChanges() {
+  const card = document.getElementById('changes-card');
+  const btn = document.getElementById('changes-toggle');
+  changesOpen = !card.classList.contains('open');
+  card.classList.toggle('open', changesOpen);
+  btn.textContent = changesOpen ? 'Skjul endringer' : 'Vis endringer';
+  if (changesOpen) renderChanges();
+}
+
+function getChangesForPeriod(periodKey) {
+  const ch = (periodKey === 'week') ? DATA.changes_week : DATA.changes_month;
+  const fylkeFilter = document.getElementById('fylke-filter').value;
+  const muniFilter = document.getElementById('muni-filter').value;
+  const matchScope = (p) => {
+    if (fylkeFilter && p.fylke !== fylkeFilter) return false;
+    if (muniFilter && p.municipality !== muniFilter) return false;
+    return true;
+  };
+  return {
+    new: (ch.new || []).filter(matchScope),
+    gone: (ch.gone || []).filter(matchScope),
+    updated: (ch.updated || []).filter(matchScope),
+  };
+}
+
+function renderChanges() {
+  const ch = getChangesForPeriod(currentPeriod);
+  const container = document.getElementById('changes-content');
+
+  if (!ch.new.length && !ch.gone.length && !ch.updated.length) {
+    container.innerHTML = `<div class="empty">
+      Ingen endringer i perioden.<br>
+      <small style="color: var(--text-faint);">Endringer detekteres ved sammenligning mellom snapshots — krever flere dager med data.</small>
+    </div>`;
+    return;
+  }
+
+  let html = '';
+
+  if (ch.new.length) {
+    html += `<div class="change-section">
+      <h3 class="change-section-title">Nye prosjekter (${ch.new.length})</h3>
+      <table><thead><tr>
+        <th>Prosjekt</th><th>Adresse</th><th>Type</th><th class="num">Antall</th><th>Salgsstart</th>
+      </tr></thead><tbody>
+      ${ch.new.map(p => `<tr>
+        <td><div class="muni">${escapeHtml(p.fylke || '–')} · ${escapeHtml(p.municipality || 'Ukjent')}</div>
+            <a href="${escapeHtml(p.project_url)}" target="_blank">${escapeHtml(p.title)}</a></td>
+        <td>${escapeHtml(p.address || '–')}</td>
+        <td>${escapeHtml(p.home_type || '–')}</td>
+        <td class="num">${p.unit_count_hint || '–'}</td>
+        <td>${escapeHtml(p.sale_start || '–')}</td>
+      </tr>`).join('')}
+      </tbody></table>
+    </div>`;
+  }
+
+  if (ch.gone.length) {
+    html += `<div class="change-section">
+      <h3 class="change-section-title">Forsvunnet (${ch.gone.length}) — gått til salgs eller trukket</h3>
+      <table><thead><tr>
+        <th>Prosjekt</th><th>Adresse</th><th>Type</th><th class="num">Antall</th>
+      </tr></thead><tbody>
+      ${ch.gone.map(p => `<tr>
+        <td><div class="muni">${escapeHtml(p.fylke || '–')} · ${escapeHtml(p.municipality || 'Ukjent')}</div>
+            ${escapeHtml(p.title)}</td>
+        <td>${escapeHtml(p.address || '–')}</td>
+        <td>${escapeHtml(p.home_type || '–')}</td>
+        <td class="num">${p.unit_count_hint || '–'}</td>
+      </tr>`).join('')}
+      </tbody></table>
+    </div>`;
+  }
+
+  if (ch.updated.length) {
+    html += `<div class="change-section">
+      <h3 class="change-section-title">Oppdaterte (${ch.updated.length})</h3>
+      <table><thead><tr>
+        <th>Prosjekt</th><th>Felt</th><th>Gammelt</th><th>Nytt</th>
+      </tr></thead><tbody>
+      ${ch.updated.flatMap(p => p.changes.map(c => `<tr>
+        <td><div class="muni">${escapeHtml(p.fylke || '–')} · ${escapeHtml(p.municipality || 'Ukjent')}</div>
+            <a href="${escapeHtml(p.project_url)}" target="_blank">${escapeHtml(p.title)}</a></td>
+        <td>${escapeHtml(c.field)}</td>
+        <td>${escapeHtml(c.old || '–')}</td>
+        <td><strong>${escapeHtml(c.new || '–')}</strong></td>
+      </tr>`)).join('')}
+      </tbody></table>
+    </div>`;
+  }
+
+  container.innerHTML = html;
+}
+
+function exportChanges() {
+  const wb = XLSX.utils.book_new();
+  for (const [key, label] of [['week', 'Siste uke'], ['month', 'Siste måned']]) {
+    const ch = getChangesForPeriod(key);
+
+    if (ch.new.length) {
+      const rows = [['Fylke', 'Kommune', 'Prosjekt', 'Adresse', 'Type', 'Soverom', 'Antall', 'Salgsstart', 'Byggestart', 'Overtakelse']];
+      for (const p of ch.new) {
+        rows.push([p.fylke, p.municipality, p.title, p.address, p.home_type, p.bedrooms_range,
+                   p.unit_count_hint, p.sale_start, p.construction_start, p.handover]);
+      }
+      const ws = XLSX.utils.aoa_to_sheet(rows);
+      ws['!cols'] = [{wch:14},{wch:14},{wch:30},{wch:30},{wch:14},{wch:10},{wch:8},{wch:18},{wch:18},{wch:18}];
+      XLSX.utils.book_append_sheet(wb, ws, `Nye - ${label}`);
+    }
+
+    if (ch.updated.length) {
+      const rows = [['Fylke', 'Kommune', 'Prosjekt', 'Felt', 'Gammel verdi', 'Ny verdi']];
+      for (const p of ch.updated) {
+        for (const c of p.changes) {
+          rows.push([p.fylke, p.municipality, p.title, c.field, c.old, c.new]);
+        }
+      }
+      const ws = XLSX.utils.aoa_to_sheet(rows);
+      ws['!cols'] = [{wch:14},{wch:14},{wch:30},{wch:18},{wch:24},{wch:24}];
+      XLSX.utils.book_append_sheet(wb, ws, `Endringer - ${label}`);
+    }
+  }
+  if (wb.SheetNames.length === 0) {
+    alert('Ingen endringer å eksportere.');
+    return;
+  }
+  XLSX.writeFile(wb, `kommer-for-salg-endringer-${DATA.updated || ''}.xlsx`);
+}
+
+function exportAll() {
+  const projects = projectsFiltered();
+  const rows = [['Fylke', 'Kommune', 'Prosjekt', 'Undertittel', 'Adresse', 'Type', 'Soverom',
+                 'Antall enheter', 'Eieform', 'Pris', 'Salgsstart', 'Byggestart', 'Overtakelse',
+                 'Sist endret', 'Finn-kode', 'URL']];
+  for (const p of projects) {
+    rows.push([p.fylke, p.municipality, p.title, p.subtitle, p.address, p.home_type,
+               p.bedrooms_range, p.unit_count_hint, p.ownership, p.price_info,
+               p.sale_start, p.construction_start, p.handover, p.last_modified,
+               p.finn_code, p.project_url]);
+  }
+  const wb = XLSX.utils.book_new();
+  const ws = XLSX.utils.aoa_to_sheet(rows);
+  ws['!cols'] = [{wch:14},{wch:14},{wch:32},{wch:40},{wch:30},{wch:14},{wch:10},
+                 {wch:8},{wch:12},{wch:18},{wch:18},{wch:18},{wch:18},{wch:18},{wch:12},{wch:50}];
+  XLSX.utils.book_append_sheet(wb, ws, 'Kommer for salg');
+  XLSX.writeFile(wb, `kommer-for-salg-${DATA.updated || ''}.xlsx`);
+}
+
+function init() {
+  document.getElementById('updated-date').textContent = DATA.updated || '—';
+
+  const fylkeSel = document.getElementById('fylke-filter');
+  const muniSel = document.getElementById('muni-filter');
+
+  const fylker = [...new Set(DATA.projects.map(p => p.fylke).filter(Boolean))].sort();
+  for (const f of fylker) {
+    fylkeSel.insertAdjacentHTML('beforeend', `<option value="${f}">${f}</option>`);
+  }
+
+  function refreshMuniDropdown() {
+    const fylkeFilter = fylkeSel.value;
+    // Bevar nåværende valg hvis fortsatt gyldig
+    const prevMuni = muniSel.value;
+
+    let pool = DATA.projects;
+    if (fylkeFilter) {
+      pool = pool.filter(p => p.fylke === fylkeFilter);
+    }
+    const munis = [...new Set(pool.map(p => p.municipality).filter(Boolean))].sort();
+
+    muniSel.innerHTML = '<option value="">Alle kommuner</option>';
+    for (const m of munis) {
+      muniSel.insertAdjacentHTML('beforeend', `<option value="${m}">${m}</option>`);
+    }
+
+    // Behold valg hvis kommunen finnes i ny liste
+    if (prevMuni && munis.includes(prevMuni)) {
+      muniSel.value = prevMuni;
+    }
+  }
+
+  function update() {
+    renderStats();
+    renderTable();
+    if (mapInitialized) renderMapMarkers();
+    if (changesOpen) renderChanges();
+  }
+
+  fylkeSel.addEventListener('change', () => {
+    refreshMuniDropdown();
+    update();
+  });
+  muniSel.addEventListener('change', update);
+  document.getElementById('search').addEventListener('input', update);
+  document.getElementById('map-toggle').addEventListener('click', toggleMap);
+  document.getElementById('changes-toggle').addEventListener('click', toggleChanges);
+  document.getElementById('all-export-btn').addEventListener('click', exportAll);
+  document.getElementById('changes-export-btn').addEventListener('click', exportChanges);
+
+  document.querySelectorAll('.period-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      currentPeriod = btn.dataset.period;
+      document.querySelectorAll('.period-btn').forEach(b => b.classList.toggle('active', b === btn));
+      renderChanges();
+    });
+  });
+  document.querySelector('.period-btn[data-period="week"]').classList.add('active');
+
+  refreshMuniDropdown();
+  update();
+}
+
+document.addEventListener('DOMContentLoaded', init);
+</script>
+</body>
+</html>
