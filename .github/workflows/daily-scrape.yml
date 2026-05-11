@@ -2,8 +2,8 @@ name: Daglig kommer-for-salg-norge-scraping
 
 on:
   schedule:
-    - cron: '59 5 * * *'   # 06:59 norsk vintertid / 07:59 sommertid
-    - cron: '59 8 * * *'   # 09:59 norsk vintertid / 10:59 sommertid (backup)
+    - cron: '59 5 * * *'
+    - cron: '59 8 * * *'
   workflow_dispatch:
 
 permissions:
@@ -15,6 +15,8 @@ jobs:
   scrape:
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    outputs:
+      skipped: ${{ steps.check.outputs.skip }}
 
     steps:
       - uses: actions/checkout@v4
@@ -79,6 +81,7 @@ jobs:
 
   deploy:
     needs: scrape
+    if: needs.scrape.outputs.skipped != 'true'
     runs-on: ubuntu-latest
     environment:
       name: github-pages
